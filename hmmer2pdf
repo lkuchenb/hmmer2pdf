@@ -46,7 +46,7 @@ tikz_settings = """    [
     % m-state settings
     mstate/.style={emitting, minimum size=2.0em},
     % i-state settings
-    istate/.style={emitting, fill=icolor},
+    istate/.style={emitting},
     % d-state settings
     dstate/.style={nonemitting, fill=red},
     % Arrows
@@ -58,7 +58,7 @@ tikz_settings = """    [
 
 # TYPE DEFINITIONS #################################################################################
 
-SubHMM = collections.namedtuple('SubHMM', ['em', 'ins','trans', 'm_ent', 'ins_ent'])
+SubHMM = collections.namedtuple('SubHMM', ['m_em', 'ins_em','trans', 'm_ent', 'ins_ent'])
 HMM = collections.namedtuple('HMM', ['subs', 'norm_m_ent', 'norm_ins_ent'])
 
 class HMMParseException(RuntimeError):
@@ -204,17 +204,18 @@ def drawPosition(out, hmm, pos):
         mtext = 'E'
     else:
         mtext = '$m_{' + str(pos) + '}$'
-        mfill = 'orange!' + str(math.floor(100 * (1-hmm.norm_m_ent[pos])))
+        mfill = 'mcolor!' + str(math.floor(100 * (1-hmm.norm_m_ent[pos])))
     node_pos = '' if pos==0 else ', right=\\hdist of m' + str(pos-1)
     out.write('        \\node[mstate, fill=' + mfill + node_pos + '] (m' + str(pos) + ') {' + mtext + '};\n')
     if pos<len(hmm.subs):
-        out.write('        \\node[istate, above right=\\vdist and .5\\hdist of m' + str(pos) + '] (i' + str(pos) + ') {$i_{' + str(pos) +'}$};\n')
+        ifill = 'icolor!' + str(math.floor(100 * (1-hmm.norm_ins_ent[pos])))
+        out.write('        \\node[istate, fill = ' + ifill + ', above right=\\vdist and .5\\hdist of m' + str(pos) + '] (i' + str(pos) + ') {$i_{' + str(pos) +'}$};\n')
         out.write('        \\node[dstate, below=\\vdist of m' + str(pos) + '] (d' + str(pos) + ') {$d_{' + str(pos) + '}$};\n')
 
     if pos > 0 and pos<len(hmm.subs):
-        draw_eprobs(out, hmm, pos, lambda x : x.em, "below=1.8mm of m", "mcolor")
+        draw_eprobs(out, hmm, pos, lambda x : x.m_em, "below=1.8mm of m", "mcolor")
     if pos<len(hmm.subs):
-        draw_eprobs(out, hmm, pos, lambda x : x.ins, "above=.8mm of i", "icolor")
+        draw_eprobs(out, hmm, pos, lambda x : x.ins_em, "above=.8mm of i", "icolor")
 
 def drawHMM(out, hmm):
     """ Draw an HMM given the output file object 'out' and 'hmm' """
