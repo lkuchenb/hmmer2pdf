@@ -1,5 +1,7 @@
 # hmmer2pdf
 
+![hmmer2pdf example output](img/hmmer2pdf_example.png?raw=true "hmmer2pdf example output")
+
 ## Features
 
  * Match state node color encodes emission entropy
