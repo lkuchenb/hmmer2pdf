@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+
+import sys
+import re
+import collections
+import tempfile
+import shutil
+import os
+import subprocess
+import math
+
+# CONSTANTS ########################################################################################
+
+latex_header = """\\documentclass[tikz,crop,10pt]{standalone}
+\\usetikzlibrary{positioning}
+\\usetikzlibrary{matrix}
+\\usetikzlibrary{arrows.meta}
+\\usetikzlibrary{shapes.geometric}
+\\newlength\\hdist
+\\newlength\\vdist
+\\newlength\\lwidth
+\\setlength\\hdist{1mm}
+\\setlength\\vdist{1mm}
+\\setlength\\lwidth{.0125mm}
+\\colorlet{mcolor}{orange}
+\\colorlet{icolor}{green}
+\\begin{document}
+    \\begin{tikzpicture}\n"""
+
+
+tikz_settings = """    [
+    % Overall settings
+    every node/.append style={scale=0.05},
+    font=\small,
+    line width=.0125mm,
+    % Probability text nodes
+    prob/.style={inner sep=.5mm, fill=white, midway},
+    loopprob/.style={prob, above=.03mm},
+    dprob/.style={prob, near end},
+    % General states
+    state/.style={minimum size=2.0em, inner sep=0mm, draw},
+    % General emitting states
+    emitting/.style={state, circle},
+    % General non-emitting states
+    nonemitting/.style={state, diamond},
+    % m-state settings
+    mstate/.style={emitting, minimum size=2.0em},
+    % i-state settings
+    istate/.style={emitting, fill=icolor},
+    % d-state settings
+    dstate/.style={nonemitting, fill=red},
+    % Arrows
+    arr/.tip={Triangle[scale=.1]},
+    % Transitions
+    trans/.style=[-arr],
+    ]"""
+
+
+# TYPE DEFINITIONS #################################################################################
+
+SubHMM = collections.namedtuple('SubHMM', ['em', 'ins','trans', 'm_ent', 'ins_ent'])
+HMM = collections.namedtuple('HMM', ['subs', 'norm_m_ent', 'norm_ins_ent'])
+
+class HMMParseException(RuntimeError):
+    pass
+
+class LaTeXException(RuntimeError):
+    pass
+
+# FUNCTION DEFINITIONS #############################################################################
+
+def ent(x):
+    """ Entropy [bits] given a vector of log probabilities """
+    x     = [ math.exp(-val) for val in x ]
+    logs  = [ math.log(val, 2) for val in x ]
+    prods = [ a * b for a,b in zip(x, logs) ]
+    return - sum(prods)
+
+def parseMatchEmProbs(s, m_num):
+    """ Parses a match state emission probability row in the hmmer hmm file format """
+    #                           m_num      aa em probs...  MAP.... CONS.......  RF.......... MM.. CS..........
+    if not re.match('^ +' + str(m_num) + '( +\d+[.]\d+){20} +(\d+|-) ([a-zA-Z]|-) ([a-zA-Z]|-) [m-] ([a-zA-Z]|-)$', s):
+        raise HMMParseException("Match state pos " + str(m_num) + ": Invalid emission probablity string: '" + s + "'")
+    return [ float(val) for val in s.split()[1:21] ]
+
+def parseInsEmProbs(s):
+    """ Parses a insert state emission probability row in the hmmer hmm file format """
+    if not re.match('^ +( +\d+[.]\d+){20}$', s):
+        raise HMMParseException("Invalid insertion state emission probablity string: '" + s + "'")
+    return [ float(val) for val in s.split() ]
+
+def parseTransProbs(s):
+    """ Parses a transition probability row in the hmmer hmm file format """
+    if not re.match('^ +( +\d+[.]\d+){2} +(\d+[.]\d+|[*])( +\d+[.]\d+){3} +(\d+[.]\d+|[*])$', s):
+        raise HMMParseException("Invalid transition probablity string: '" + s + "'")
+    return [ (lambda v : float('inf') if v=='*' else float(v))(val) for val in s.split() ]
+
+def rescale(subs, getter):
+    """ Rescales values across all subs, getter defines which member to rescale """
+    vals = [ getter(sub) for sub in subs ]
+    min_val = min([val for val in vals if not val is None])
+    max_val = max([val for val in vals if not val is None])
+    res = [ (lambda x:None if x is None else (x - min_val) / (max_val-min_val))(val) for val in vals ]
+    return res
+
+def parseHMMFile(instream):
+    """ Parses a hmmer HMM file given a file input object """
+    subs = list()
+    in_hmm = False
+    raw = [ line.rstrip('\n') for line in instream ]
+
+    # Read the begin state insert emission and transition probabilities
+    gen = (i for i in range(len(raw)))
+    for i in gen:
+        line = raw[i]
+        if re.match('^HMM\s+A\s+', line):
+            next(gen)
+            in_hmm = True
+            continue
+        if in_hmm:
+            if re.match('^\s+COMPO\s+', line):
+                i += 1
+            ins_em   = parseInsEmProbs(raw[i])
+            subs += [ SubHMM(None, ins_em, parseTransProbs(raw[i+1]), None, ent(ins_em)) ]
+            i += 2
+            break
+
+    hmm_position = 1
+    for i in range(i, len(raw), 3):
+        if re.match('^//', raw[i]):
+            break
+        match_em = parseMatchEmProbs(raw[i], hmm_position)
+        ins_em   = parseInsEmProbs(raw[i+1])
+        subs += [ SubHMM(match_em, ins_em, parseTransProbs(raw[i+2]), ent(match_em), ent(ins_em)) ]
+        hmm_position += 1
+    return HMM(subs, rescale(subs, lambda x : x.m_ent), rescale(subs, lambda x : x.ins_ent))
+
+def openLaTeX():
+    """ Create a temporary directory with a TeX file. Writes header and settings to the file. Returns file handle. """
+    tdir = tempfile.mkdtemp()
+    out = open(tdir + '/hmm.tex', 'w')
+    out.write(latex_header)
+    out.write(tikz_settings)
+    print(tdir)
+    return tdir, out
+
+def closeLaTeX(out):
+    """ Write the footer and close the TeX output file. """
+    out.write('    \\end{tikzpicture}\n\end{document}\n')
+    out.close()
+
+def drawTrans(out, hmm, pos):
+    """ Draw the state transition arcs for the states correspoding to position 'pos' """
+    vals  = [ math.exp(-val) for val in hmm[pos].trans ]
+    lw_co = [ 1 + 2 * val for val in vals ]
+    if not vals[0] is None and vals[0] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[0]) + '\\lwidth] (m' + str(pos) + ') -- (m'  + str(pos+1) + ') node [prob] {$' + "%.3f" % vals[0] + '$};\n')
+    if not vals[1] is None and vals[1] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[1]) + '\\lwidth] (m' + str(pos) + ') -- (i'  + str(pos) + ') node [prob] {$' + "%.3f" % vals[1] + '$};\n')
+    if not vals[2] is None and vals[2] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[2]) + '\\lwidth] (m' + str(pos) + ') -- (d'  + str(pos+1) + ') node [dprob] {$' + "%.3f" % vals[2] + '$};\n')
+    if not vals[3] is None and vals[3] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[3]) + '\\lwidth] (i' + str(pos) + ') -- (m'  + str(pos+1) + ') node [prob] {$' + "%.3f" % vals[3] + '$};\n')
+    if not vals[4] is None and vals[4] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[4]) + '\\lwidth] (i' + str(pos) + ') to [out=60,in=120,looseness=8] node [loopprob] {$' + "%.3f" % vals[4] + '$} (i'  + str(pos) + ') ;\n')
+    if not vals[5] is None and vals[5] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[5]) + '\\lwidth] (d' + str(pos) + ') -- (m'  + str(pos+1) + ') node [dprob] {$' + "%.3f" % vals[5] + '$};\n')
+    if not vals[6] is None and vals[6] > 0:
+        out.write('        \\draw [trans, line width=' + str(lw_co[6]) + '\\lwidth] (d' + str(pos) + ') -- (d'  + str(pos+1) + ') node [prob] {$' + "%.3f" % vals[6] + '$};\n')
+
+def draw_eprobs(out, hmm, pos, getter, pos_string, color):
+    """ Draw the state emission probability tables for the states correspoding
+    to position 'pos'. 'getter' defines whether insert oder match states are
+    drawn."""
+    probs        = [ math.exp(-val) for val in getter(hmm.subs[pos]) ]
+    prob_strings = [ "%.3f" % val for val in probs ]
+    prob_colors  = [ color + '!' + str(math.floor(100*val)) for val in probs ]
+
+    out.write("""
+    \\matrix [inner sep=.05mm, outer sep=0pt, """ + pos_string + str(pos) + """, matrix of nodes, nodes={inner sep=.2mm, font=\\tiny, minimum size=1.0em}, row sep=.04mm] (m) {%
+        |[circle, fill=""" + prob_colors[0] + """]|A & $""" + prob_strings[0] + """$ & |[circle, fill=""" + prob_colors[10] + """]|M & $""" + prob_strings[10] + """$\\\\
+        |[circle, fill=""" + prob_colors[1] + """]|C & $""" + prob_strings[1] + """$ & |[circle, fill=""" + prob_colors[11] + """]|N & $""" + prob_strings[11] + """$\\\\
+        |[circle, fill=""" + prob_colors[2] + """]|D & $""" + prob_strings[2] + """$ & |[circle, fill=""" + prob_colors[12] + """]|P & $""" + prob_strings[12] + """$\\\\
+        |[circle, fill=""" + prob_colors[3] + """]|E & $""" + prob_strings[3] + """$ & |[circle, fill=""" + prob_colors[13] + """]|Q & $""" + prob_strings[13] + """$\\\\
+        |[circle, fill=""" + prob_colors[4] + """]|F & $""" + prob_strings[4] + """$ & |[circle, fill=""" + prob_colors[14] + """]|R & $""" + prob_strings[14] + """$\\\\
+        |[circle, fill=""" + prob_colors[5] + """]|G & $""" + prob_strings[5] + """$ & |[circle, fill=""" + prob_colors[15] + """]|S & $""" + prob_strings[15] + """$\\\\
+        |[circle, fill=""" + prob_colors[6] + """]|H & $""" + prob_strings[6] + """$ & |[circle, fill=""" + prob_colors[16] + """]|T & $""" + prob_strings[16] + """$\\\\
+        |[circle, fill=""" + prob_colors[7] + """]|I & $""" + prob_strings[7] + """$ & |[circle, fill=""" + prob_colors[17] + """]|V & $""" + prob_strings[17] + """$\\\\
+        |[circle, fill=""" + prob_colors[8] + """]|K & $""" + prob_strings[8] + """$ & |[circle, fill=""" + prob_colors[18] + """]|W & $""" + prob_strings[18] + """$\\\\
+        |[circle, fill=""" + prob_colors[9] + """]|L & $""" + prob_strings[9] + """$ & |[circle, fill=""" + prob_colors[19] + """]|Y & $""" + prob_strings[19] + """$\\\\
+    };
+    \\draw [rounded corners=.1mm] (m.south west) rectangle (m.north east);\n""")
+
+def drawPosition(out, hmm, pos):
+    """ Draw the state nodes and emission probability tables for position 'pos' """
+    # Anti proportional, relative entropy - low entropy -> high color intensity
+    mfill = 'gray!50'
+    if pos==0:
+        mtext = 'B'
+    elif pos==len(hmm.subs):
+        mtext = 'E'
+    else:
+        mtext = '$m_{' + str(pos) + '}$'
+        mfill = 'orange!' + str(math.floor(100 * (1-hmm.norm_m_ent[pos])))
+    node_pos = '' if pos==0 else ', right=\\hdist of m' + str(pos-1)
+    out.write('        \\node[mstate, fill=' + mfill + node_pos + '] (m' + str(pos) + ') {' + mtext + '};\n')
+    if pos<len(hmm.subs):
+        out.write('        \\node[istate, above right=\\vdist and .5\\hdist of m' + str(pos) + '] (i' + str(pos) + ') {$i_{' + str(pos) +'}$};\n')
+        out.write('        \\node[dstate, below=\\vdist of m' + str(pos) + '] (d' + str(pos) + ') {$d_{' + str(pos) + '}$};\n')
+
+    if pos > 0 and pos<len(hmm.subs):
+        draw_eprobs(out, hmm, pos, lambda x : x.em, "below=1.8mm of m", "mcolor")
+    if pos<len(hmm.subs):
+        draw_eprobs(out, hmm, pos, lambda x : x.ins, "above=.8mm of i", "icolor")
+
+def drawHMM(out, hmm):
+    for pos in range(1+len(hmm.subs)):
+        drawPosition(out, hmm, pos)
+    for pos in range(0, len(hmm.subs)):
+        drawTrans(out, hmm.subs, pos)
+
+def compileLaTeX(tdir):
+    ret = subprocess.run(['lualatex', '--interaction', 'batchmode', 'hmm'], cwd = tdir, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    if ret.returncode != 0:
+        raise LaTeXException()
+
+def remove_temp_dir(tdir, **kwargs):
+    print("Cleaning up temporary data.", file = sys.stderr)
+    shutil.rmtree(tdir, kwargs)
+
+# MAIN PROGRAM #####################################################################################
+
+try:
+    print("Reading HMM file...", file = sys.stderr, end = '')
+    # Parse the HMM
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], 'r') as infile:
+            hmm = parseHMMFile(infile)
+    else:
+        hmm = parseHMMFile(sys.stdin)
+
+    # Start a LaTeX document
+    tdir, out = openLaTeX()
+
+    print(" Done.\nLaTeX Conversion...", file = sys.stderr, end = '')
+    # Draw the HMM
+    drawHMM(out, hmm)
+
+    # Close the LaTeX document
+    closeLaTeX(out)
+
+    print(" Done.\nCompiling...", file = sys.stderr, end = '')
+    # Compile the LaTeX document
+    compileLaTeX(tdir)
+
+    print(" Done.", file = sys.stderr)
+    # Copy the temporary PDF file to stdout
+    shutil.copyfileobj(open(tdir + '/hmm.pdf', 'rb'), sys.stdout.buffer)
+
+    # Remove temporary files
+    remove_temp_dir(tdir)
+except KeyboardInterrupt:
+    print("\nUser interrupted.", file = sys.stderr)
+    remove_temp_dir(tdir, ignore_errors = True)
+except LaTeXException:
+    print("\nERROR - LaTeX compiler failed. You may want to inspect the .log and .tex files in\n" + tdir, file = sys.stderr)
