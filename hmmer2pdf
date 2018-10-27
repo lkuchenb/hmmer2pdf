@@ -230,7 +230,7 @@ def checkLuaLaTeX():
 def compileLaTeX(tdir):
     ret = subprocess.run(['lualatex', '--interaction', 'batchmode', 'hmm'], cwd = tdir, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     if ret.returncode != 0:
-        raise LaTeXException()
+        raise LaTeXException
 
 def remove_temp_dir(tdir, **kwargs):
     print("Cleaning up temporary data.", file = sys.stderr)
@@ -274,5 +274,7 @@ except NoLuaLaTeXException:
 except KeyboardInterrupt:
     print("\nUser interrupted.", file = sys.stderr)
     remove_temp_dir(tdir, ignore_errors = True)
+except HMMParseException as err:
+    print("\nERROR - Failed to parse hmm file format:", err, file = sys.stderr)
 except LaTeXException:
     print("\nERROR - LaTeX compiler failed. You may want to inspect the .log and .tex files in\n" + tdir, file = sys.stderr)
