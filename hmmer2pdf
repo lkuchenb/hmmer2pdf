@@ -67,6 +67,9 @@ class HMMParseException(RuntimeError):
 class LaTeXException(RuntimeError):
     pass
 
+class NoLuaLaTeXException(RuntimeError):
+    pass
+
 # FUNCTION DEFINITIONS #############################################################################
 
 def ent(x):
@@ -219,6 +222,11 @@ def drawHMM(out, hmm):
     for pos in range(0, len(hmm.subs)):
         drawTrans(out, hmm.subs, pos)
 
+def checkLuaLaTeX():
+    ret = subprocess.run(['lualatex', '--version'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    if ret.returncode != 0:
+        raise NoLuaLaTeXException()
+
 def compileLaTeX(tdir):
     ret = subprocess.run(['lualatex', '--interaction', 'batchmode', 'hmm'], cwd = tdir, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     if ret.returncode != 0:
@@ -231,6 +239,8 @@ def remove_temp_dir(tdir, **kwargs):
 # MAIN PROGRAM #####################################################################################
 
 try:
+    checkLuaLaTeX()
+
     print("Reading HMM file...", file = sys.stderr, end = '')
     # Parse the HMM
     if len(sys.argv) > 1:
@@ -259,6 +269,8 @@ try:
 
     # Remove temporary files
     remove_temp_dir(tdir)
+except NoLuaLaTeXException:
+    print("\nERROR - Could not execute 'lualatex' - Do you have a LaTeX suite installed?", file = sys.stderr)
 except KeyboardInterrupt:
     print("\nUser interrupted.", file = sys.stderr)
     remove_temp_dir(tdir, ignore_errors = True)
