@@ -282,3 +282,9 @@ except HMMParseException as err:
     print("\nERROR - Failed to parse hmm file format:", err, file = sys.stderr)
 except LaTeXException:
     print("\nERROR - LaTeX compiler failed. You may want to inspect the .log and .tex files in\n" + tdir, file = sys.stderr)
+except Exception:
+    print("\n****************************************************************************************************", file = sys.stderr)
+    print("UNEXPECTED ERROR - Please report this error at https://github.com/lkuchenb/hmmer2pdf/issues and", file = sys.stderr)
+    print("keep the contents of '" + tdir + "' and the\ntraceback below for debugging purposes.", file = sys.stderr)
+    print("****************************************************************************************************", file = sys.stderr)
+    raise
