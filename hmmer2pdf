@@ -217,22 +217,26 @@ def drawPosition(out, hmm, pos):
         draw_eprobs(out, hmm, pos, lambda x : x.ins, "above=.8mm of i", "icolor")
 
 def drawHMM(out, hmm):
+    """ Draw an HMM given the output file object 'out' and 'hmm' """
     for pos in range(1+len(hmm.subs)):
         drawPosition(out, hmm, pos)
     for pos in range(0, len(hmm.subs)):
         drawTrans(out, hmm.subs, pos)
 
 def checkLuaLaTeX():
+    """ Check if 'lualatex' can be executed and raise an exception otherwise """
     ret = subprocess.run(['lualatex', '--version'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     if ret.returncode != 0:
         raise NoLuaLaTeXException()
 
 def compileLaTeX(tdir):
+    """ Compile the 'hmm.tex' file in the given directory """
     ret = subprocess.run(['lualatex', '--interaction', 'batchmode', 'hmm'], cwd = tdir, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     if ret.returncode != 0:
         raise LaTeXException
 
 def remove_temp_dir(tdir, **kwargs):
+    """ Remove the temporary directory """
     print("Cleaning up temporary data.", file = sys.stderr)
     shutil.rmtree(tdir, kwargs)
 
