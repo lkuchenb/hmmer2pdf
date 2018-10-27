@@ -4,7 +4,7 @@
 
 ## Features
 
- * Match state node color encodes emission entropy
+ * Match and insert state color encodes emission entropy
  * Line width encodes transition probability
  * Emission probability tables for emitting states (*insert* and *match*)
 
