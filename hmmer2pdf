@@ -103,7 +103,8 @@ def rescale(subs, getter):
     vals = [ getter(sub) for sub in subs ]
     min_val = min([val for val in vals if not val is None])
     max_val = max([val for val in vals if not val is None])
-    res = [ (lambda x:None if x is None else (x - min_val) / (max_val-min_val))(val) for val in vals ]
+    val_range = max_val - min_val if max_val != min_val else 1
+    res = [ (lambda x:None if x is None else (x - min_val) / (val_range))(val) for val in vals ]
     return res
 
 def parseHMMFile(instream):
@@ -252,7 +253,11 @@ try:
         with open(sys.argv[1], 'r') as infile:
             hmm = parseHMMFile(infile)
     else:
-        hmm = parseHMMFile(sys.stdin)
+        if len(sys.argv) > 1:
+            with open(sys.argv[1], 'r') as infile:
+                hmm = parseHMMFile(infile)
+        else:
+            hmm = parseHMMFile(sys.stdin)
 
     # Start a LaTeX document
     tdir, out = openLaTeX()
