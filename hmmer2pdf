@@ -82,7 +82,7 @@ def ent(x):
 def parseMatchEmProbs(s, m_num):
     """ Parses a match state emission probability row in the hmmer hmm file format """
     #                           m_num      aa em probs...  MAP.... CONS.......  RF.......... MM.. CS..........
-    if not re.match('^ +' + str(m_num) + '( +\d+[.]\d+){20} +(\d+|-) ([a-zA-Z]|-) ([a-zA-Z]|-) [m-] ([a-zA-Z]|-)$', s):
+    if not re.match('^ +' + str(m_num) + '( +\d+[.]\d+){20} +(\d+|-) ([a-zA-Z.]|-) ([a-zA-Z.]|-) [m-] ([a-zA-Z.]|-)$', s):
         raise HMMParseException("Match state pos " + str(m_num) + ": Invalid emission probablity string: '" + s + "'")
     return [ float(val) for val in s.split()[1:21] ]
 
