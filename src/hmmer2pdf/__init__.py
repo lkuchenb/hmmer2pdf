@@ -1,4 +1,22 @@
-#!/usr/bin/env python3
+# Copyright (c) 2020 Leon Kuchenbecker <leon.kuchenbecker@uni-tuebingen.de>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import sys
 import re
@@ -8,6 +26,7 @@ import shutil
 import os
 import subprocess
 import math
+import argparse
 
 # CONSTANTS ########################################################################################
 
@@ -153,7 +172,6 @@ def openLaTeX():
     out = open(tdir + '/hmm.tex', 'w')
     out.write(latex_header)
     out.write(tikz_settings)
-    print(tdir)
     return tdir, out
 
 def closeLaTeX(out):
@@ -246,7 +264,10 @@ def drawHMM(out, hmm):
 
 def checkLuaLaTeX():
     """ Check if 'lualatex' can be executed and raise an exception otherwise """
-    ret = subprocess.run(['lualatex', '--version'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    try:
+        ret = subprocess.run(['lualatex', '--version'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    except FileNotFoundError:
+        raise NoLuaLaTeXException()
     if ret.returncode != 0:
         raise NoLuaLaTeXException()
 
@@ -263,53 +284,55 @@ def remove_temp_dir(tdir, **kwargs):
 
 # MAIN PROGRAM #####################################################################################
 
-try:
-    checkLuaLaTeX()
+def get_config():
+    parser = argparse.ArgumentParser("hmmer2pdf")
+    parser.add_argument('infile', type = argparse.FileType('r'), nargs="?", default = sys.stdin)
+    parser.add_argument('outfile', type = argparse.FileType('w'), nargs="?", default = sys.stdout)
+    return parser.parse_args()
 
-    print("Reading HMM file...", file = sys.stderr, end = '')
-    # Parse the HMM
-    if len(sys.argv) > 1:
-        with open(sys.argv[1], 'r') as infile:
-            hmm = parseHMMFile(infile)
-    else:
-        if len(sys.argv) > 1:
-            with open(sys.argv[1], 'r') as infile:
-                hmm = parseHMMFile(infile)
-        else:
-            hmm = parseHMMFile(sys.stdin)
+def main():
+    try:
+        args = get_config()
+        tdir = str()
+        checkLuaLaTeX()
 
-    # Start a LaTeX document
-    tdir, out = openLaTeX()
+        print("Reading HMM file...", file = sys.stderr, end = '', flush = True)
+        # Parse the HMM
+        hmm = parseHMMFile(args.infile)
 
-    print(" Done.\nLaTeX Conversion...", file = sys.stderr, end = '')
-    # Draw the HMM
-    drawHMM(out, hmm)
+        # Start a LaTeX document
+        tdir, out = openLaTeX()
 
-    # Close the LaTeX document
-    closeLaTeX(out)
+        print(" Done.\nLaTeX Conversion...", file = sys.stderr, end = '')
+        # Draw the HMM
+        drawHMM(out, hmm)
 
-    print(" Done.\nCompiling...", file = sys.stderr, end = '')
-    # Compile the LaTeX document
-    compileLaTeX(tdir)
+        # Close the LaTeX document
+        closeLaTeX(out)
 
-    print(" Done.", file = sys.stderr)
-    # Copy the temporary PDF file to stdout
-    shutil.copyfileobj(open(tdir + '/hmm.pdf', 'rb'), sys.stdout.buffer)
+        print(" Done.\nCompiling...", file = sys.stderr, end = '')
+        # Compile the LaTeX document
+        compileLaTeX(tdir)
 
-    # Remove temporary files
-    remove_temp_dir(tdir)
-except NoLuaLaTeXException:
-    print("\nERROR - Could not execute 'lualatex' - Do you have a LaTeX suite installed?", file = sys.stderr)
-except KeyboardInterrupt:
-    print("\nUser interrupted.", file = sys.stderr)
-    remove_temp_dir(tdir, ignore_errors = True)
-except HMMParseException as err:
-    print("\nERROR - Failed to parse hmm file format:", err, file = sys.stderr)
-except LaTeXException:
-    print("\nERROR - LaTeX compiler failed. You may want to inspect the .log and .tex files in\n" + tdir, file = sys.stderr)
-except Exception:
-    print("\n****************************************************************************************************", file = sys.stderr)
-    print("UNEXPECTED ERROR - Please report this error at https://github.com/lkuchenb/hmmer2pdf/issues and", file = sys.stderr)
-    print("keep the contents of '" + tdir + "' and the\ntraceback below for debugging purposes.", file = sys.stderr)
-    print("****************************************************************************************************", file = sys.stderr)
-    raise
+        print(" Done.", file = sys.stderr)
+        # Copy the temporary PDF file to stdout
+        shutil.copyfileobj(open(tdir + '/hmm.pdf', 'rb'), args.outfile.buffer)
+
+        # Remove temporary files
+        remove_temp_dir(tdir)
+    except NoLuaLaTeXException:
+        print("\nERROR - Could not execute 'lualatex' - Do you have a LaTeX suite installed?", file = sys.stderr)
+    except KeyboardInterrupt:
+        print("\nUser interrupted.", file = sys.stderr)
+        if tdir:
+            remove_temp_dir(tdir, ignore_errors = True)
+    except HMMParseException as err:
+        print("\nERROR - Failed to parse hmm file format:", err, file = sys.stderr)
+    except LaTeXException:
+        print("\nERROR - LaTeX compiler failed. You may want to inspect the .log and .tex files in\n" + tdir, file = sys.stderr)
+    except Exception:
+        print("\n****************************************************************************************************", file = sys.stderr)
+        print("UNEXPECTED ERROR - Please report this error at https://github.com/lkuchenb/hmmer2pdf/issues and", file = sys.stderr)
+        print("keep the contents of '" + tdir + "' and the\ntraceback below for debugging purposes.", file = sys.stderr)
+        print("****************************************************************************************************", file = sys.stderr)
+        raise
