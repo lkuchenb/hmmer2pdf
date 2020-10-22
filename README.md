@@ -8,11 +8,13 @@
  * Line width encodes transition probability
  * Emission probability tables for emitting states (*insert* and *match*)
 
+## Installation
+
+    pip install git+https://github.com/lkuchenb/hmmer2pdf@latest
+
 ## Usage
 
-```
-hmmer2pdf < input.hmm > output.pdf
-```
+    hmmer2pdf < input.hmm > output.pdf
 
 ## Requirements
 
