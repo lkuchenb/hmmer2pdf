@@ -82,13 +82,21 @@ def ent(x):
 def parseMatchEmProbs(s, m_num):
     """ Parses a match state emission probability row in the hmmer hmm file format """
     #                           m_num      aa em probs...  MAP.... CONS.......  RF.......... MM.. CS..........
-    if not re.match('^ +' + str(m_num) + '( +\d+[.]\d+){20} +(\d+|-) ([a-zA-Z.]|-) ([a-zA-Z.]|-) [m-] ([a-zA-Z.]|-)$', s):
+    alph_size=None
+    if re.match('^ +' + str(m_num) + '( +\d+[.]\d+){20} +(\d+|-) ([a-zA-Z.]|-) ([a-zA-Z.]|-) [m-] ([a-zA-Z.]|-)$', s):
+        alph_size = 20 # Protein
+    elif re.match('^ +' + str(m_num) + '( +\d+[.]\d+){4} +(\d+|-) ([a-zA-Z.]|-) ([a-zA-Z.]|-) [m-] ([a-zA-Z.]|-)$', s):
+        alph_size = 4  # DNA
+    else:
         raise HMMParseException("Match state pos " + str(m_num) + ": Invalid emission probablity string: '" + s + "'")
-    return [ float(val) for val in s.split()[1:21] ]
+    return [ float(val) for val in s.split()[1:(alph_size+1)] ]
 
 def parseInsEmProbs(s):
     """ Parses a insert state emission probability row in the hmmer hmm file format """
-    if not re.match('^ +( +\d+[.]\d+){20}$', s):
+    if not any([
+        re.match('^ +( +\d+[.]\d+){20}$', s), # Protein
+        re.match('^ +( +\d+[.]\d+){4}$', s),  # DNA
+        ]):
         raise HMMParseException("Invalid insertion state emission probablity string: '" + s + "'")
     return [ float(val) for val in s.split() ]
 
@@ -180,20 +188,31 @@ def draw_eprobs(out, hmm, pos, getter, pos_string, color):
     prob_strings = [ "%.3f" % val for val in probs ]
     prob_colors  = [ color + '!' + str(math.floor(100*val)) for val in probs ]
 
-    out.write("""
-    \\matrix [inner sep=.05mm, outer sep=0pt, """ + pos_string + str(pos) + """, matrix of nodes, nodes={inner sep=.2mm, font=\\tiny, minimum size=1.0em}, row sep=.04mm] (m) {%
-        |[circle, fill=""" + prob_colors[0] + """]|A & $""" + prob_strings[0] + """$ & |[circle, fill=""" + prob_colors[10] + """]|M & $""" + prob_strings[10] + """$\\\\
-        |[circle, fill=""" + prob_colors[1] + """]|C & $""" + prob_strings[1] + """$ & |[circle, fill=""" + prob_colors[11] + """]|N & $""" + prob_strings[11] + """$\\\\
-        |[circle, fill=""" + prob_colors[2] + """]|D & $""" + prob_strings[2] + """$ & |[circle, fill=""" + prob_colors[12] + """]|P & $""" + prob_strings[12] + """$\\\\
-        |[circle, fill=""" + prob_colors[3] + """]|E & $""" + prob_strings[3] + """$ & |[circle, fill=""" + prob_colors[13] + """]|Q & $""" + prob_strings[13] + """$\\\\
-        |[circle, fill=""" + prob_colors[4] + """]|F & $""" + prob_strings[4] + """$ & |[circle, fill=""" + prob_colors[14] + """]|R & $""" + prob_strings[14] + """$\\\\
-        |[circle, fill=""" + prob_colors[5] + """]|G & $""" + prob_strings[5] + """$ & |[circle, fill=""" + prob_colors[15] + """]|S & $""" + prob_strings[15] + """$\\\\
-        |[circle, fill=""" + prob_colors[6] + """]|H & $""" + prob_strings[6] + """$ & |[circle, fill=""" + prob_colors[16] + """]|T & $""" + prob_strings[16] + """$\\\\
-        |[circle, fill=""" + prob_colors[7] + """]|I & $""" + prob_strings[7] + """$ & |[circle, fill=""" + prob_colors[17] + """]|V & $""" + prob_strings[17] + """$\\\\
-        |[circle, fill=""" + prob_colors[8] + """]|K & $""" + prob_strings[8] + """$ & |[circle, fill=""" + prob_colors[18] + """]|W & $""" + prob_strings[18] + """$\\\\
-        |[circle, fill=""" + prob_colors[9] + """]|L & $""" + prob_strings[9] + """$ & |[circle, fill=""" + prob_colors[19] + """]|Y & $""" + prob_strings[19] + """$\\\\
-    };
-    \\draw [rounded corners=.1mm] (m.south west) rectangle (m.north east);\n""")
+    if len(probs)==20:
+        out.write("""
+        \\matrix [inner sep=.05mm, outer sep=0pt, """ + pos_string + str(pos) + """, matrix of nodes, nodes={inner sep=.2mm, font=\\tiny, minimum size=1.0em}, row sep=.04mm] (m) {%
+            |[circle, fill=""" + prob_colors[0] + """]|A & $""" + prob_strings[0] + """$ & |[circle, fill=""" + prob_colors[10] + """]|M & $""" + prob_strings[10] + """$\\\\
+            |[circle, fill=""" + prob_colors[1] + """]|C & $""" + prob_strings[1] + """$ & |[circle, fill=""" + prob_colors[11] + """]|N & $""" + prob_strings[11] + """$\\\\
+            |[circle, fill=""" + prob_colors[2] + """]|D & $""" + prob_strings[2] + """$ & |[circle, fill=""" + prob_colors[12] + """]|P & $""" + prob_strings[12] + """$\\\\
+            |[circle, fill=""" + prob_colors[3] + """]|E & $""" + prob_strings[3] + """$ & |[circle, fill=""" + prob_colors[13] + """]|Q & $""" + prob_strings[13] + """$\\\\
+            |[circle, fill=""" + prob_colors[4] + """]|F & $""" + prob_strings[4] + """$ & |[circle, fill=""" + prob_colors[14] + """]|R & $""" + prob_strings[14] + """$\\\\
+            |[circle, fill=""" + prob_colors[5] + """]|G & $""" + prob_strings[5] + """$ & |[circle, fill=""" + prob_colors[15] + """]|S & $""" + prob_strings[15] + """$\\\\
+            |[circle, fill=""" + prob_colors[6] + """]|H & $""" + prob_strings[6] + """$ & |[circle, fill=""" + prob_colors[16] + """]|T & $""" + prob_strings[16] + """$\\\\
+            |[circle, fill=""" + prob_colors[7] + """]|I & $""" + prob_strings[7] + """$ & |[circle, fill=""" + prob_colors[17] + """]|V & $""" + prob_strings[17] + """$\\\\
+            |[circle, fill=""" + prob_colors[8] + """]|K & $""" + prob_strings[8] + """$ & |[circle, fill=""" + prob_colors[18] + """]|W & $""" + prob_strings[18] + """$\\\\
+            |[circle, fill=""" + prob_colors[9] + """]|L & $""" + prob_strings[9] + """$ & |[circle, fill=""" + prob_colors[19] + """]|Y & $""" + prob_strings[19] + """$\\\\
+        };
+        \\draw [rounded corners=.1mm] (m.south west) rectangle (m.north east);\n""")
+    elif len(probs)==4:
+        out.write("""
+        \\matrix [inner sep=.05mm, outer sep=0pt, """ + pos_string + str(pos) + """, matrix of nodes, nodes={inner sep=.2mm, font=\\tiny, minimum size=1.0em}, row sep=.04mm] (m) {%
+            |[circle, fill=""" + prob_colors[0] + """]|A & $""" + prob_strings[0] + """$ \\\\
+            |[circle, fill=""" + prob_colors[1] + """]|C & $""" + prob_strings[1] + """$ \\\\
+            |[circle, fill=""" + prob_colors[2] + """]|G & $""" + prob_strings[2] + """$ \\\\
+            |[circle, fill=""" + prob_colors[3] + """]|T & $""" + prob_strings[3] + """$ \\\\
+        };
+        \\draw [rounded corners=.1mm] (m.south west) rectangle (m.north east);\n""")
+
 
 def drawPosition(out, hmm, pos):
     """ Draw the state nodes and emission probability tables for position 'pos' """
