@@ -1,3 +1,5 @@
+![release badge](https://img.shields.io/github/v/release/lkuchenb/hmmer2pdf?sort=semver)
+
 # hmmer2pdf
 
 ![hmmer2pdf example output](img/hmmer2pdf_example.png?raw=true "hmmer2pdf example output")
