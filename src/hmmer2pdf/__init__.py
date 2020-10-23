@@ -86,7 +86,7 @@ class HMMParseException(RuntimeError):
 class LaTeXException(RuntimeError):
     pass
 
-class NoLuaLaTeXException(RuntimeError):
+class NoLaTeXException(RuntimeError):
     pass
 
 # FUNCTION DEFINITIONS #############################################################################
@@ -262,18 +262,20 @@ def drawHMM(out, hmm):
     for pos in range(0, len(hmm.subs)):
         drawTrans(out, hmm.subs, pos)
 
-def checkLuaLaTeX():
+def checkLaTeX(pdflatex):
     """ Check if 'lualatex' can be executed and raise an exception otherwise """
+    compiler = 'pdflatex' if pdflatex else 'lualatex'
     try:
-        ret = subprocess.run(['lualatex', '--version'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+        ret = subprocess.run([compiler, '--version'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     except FileNotFoundError:
-        raise NoLuaLaTeXException()
+        raise NoLaTeXException()
     if ret.returncode != 0:
-        raise NoLuaLaTeXException()
+        raise NouaLaTeXException()
 
-def compileLaTeX(tdir):
+def compileLaTeX(tdir, pdflatex):
     """ Compile the 'hmm.tex' file in the given directory """
-    ret = subprocess.run(['lualatex', '--interaction', 'batchmode', 'hmm'], cwd = tdir, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    compiler = 'pdflatex' if pdflatex else 'lualatex'
+    ret = subprocess.run([compiler, '--interaction', 'batchmode', 'hmm'], cwd = tdir, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     if ret.returncode != 0:
         raise LaTeXException
 
@@ -285,16 +287,23 @@ def remove_temp_dir(tdir, **kwargs):
 # MAIN PROGRAM #####################################################################################
 
 def get_config():
-    parser = argparse.ArgumentParser("hmmer2pdf")
-    parser.add_argument('infile', type = argparse.FileType('r'), nargs="?", default = sys.stdin)
-    parser.add_argument('outfile', type = argparse.FileType('w'), nargs="?", default = sys.stdout)
+    parser = argparse.ArgumentParser("hmmer2pdf", description="Plotting tool for HMMER3 hmm files based on TikZ")
+    parser.add_argument('infile', type = argparse.FileType('r'), nargs="?", default = sys.stdin, help = "The input HMM file to read from. Default: stdin")
+    parser.add_argument('outfile', type = argparse.FileType('w'), nargs="?", default = sys.stdout, help = "The output PDF file to write to. Default: stdout")
+    parser.add_argument('--pdflatex', action='store_true', help = "Use 'pdflatex' instead of 'lualatex'. WARNING - 'pdflatex' will fail on larger HMMS due to memory limits")
     return parser.parse_args()
 
 def main():
     try:
         args = get_config()
         tdir = str()
-        checkLuaLaTeX()
+
+        # Warn user if pdflatex switch was used
+        if args.pdflatex:
+            print("WARNING - pdflatex will only work on small HMMs.", file = sys.stderr)
+
+        # Check latex compiler availablilty
+        checkLaTeX(args.pdflatex)
 
         print("Reading HMM file...", file = sys.stderr, end = '', flush = True)
         # Parse the HMM
@@ -312,7 +321,7 @@ def main():
 
         print(" Done.\nCompiling...", file = sys.stderr, end = '')
         # Compile the LaTeX document
-        compileLaTeX(tdir)
+        compileLaTeX(tdir, args.pdflatex)
 
         print(" Done.", file = sys.stderr)
         # Copy the temporary PDF file to stdout
@@ -320,8 +329,9 @@ def main():
 
         # Remove temporary files
         remove_temp_dir(tdir)
-    except NoLuaLaTeXException:
-        print("\nERROR - Could not execute 'lualatex' - Do you have a LaTeX suite installed?", file = sys.stderr)
+    except NoLaTeXException:
+        compiler = 'pdflatex' if args.pdflatex else 'lualatex'
+        print(f"\nERROR - Could not execute '{compiler}' - Do you have a LaTeX suite installed?", file = sys.stderr)
     except KeyboardInterrupt:
         print("\nUser interrupted.", file = sys.stderr)
         if tdir:
