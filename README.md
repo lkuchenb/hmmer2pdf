@@ -21,5 +21,5 @@
 ## Requirements
 
  * Python 3.x
- * LaTeX suite
+ * LaTeX suite with the `tikz` and `standalone` packages installed
  * `lualatex` in your `PATH`
